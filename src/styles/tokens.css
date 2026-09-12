@@ -13,7 +13,10 @@
   --sheet:       #ffffff;
   --ink:         #10151b;
   --ink-2:       #58636f;
-  --ink-3:       #8a949f;
+  /* Was #8a949f, which cleared 3:1 on --sheet at 3.08 but only reached 2.53 on
+     --paper. The ported contrast test caught it. Surfaces, not inks, are what
+     make a ramp pass or fail, which is why the test names the surface. */
+  --ink-3:       #7a838e;
   --rule:        #ccd3da;
   --rule-2:      #e1e6eb;
   --accent:      #14576c;
