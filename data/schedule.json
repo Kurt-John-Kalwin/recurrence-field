@@ -1,0 +1,10 @@
+{
+  "note": "A static file, fetched for real. The loading and error states in this demo are driven by this request, not by a setTimeout.",
+  "busy": [
+    { "date": "2026-09-16", "label": "Design review" },
+    { "date": "2026-09-30", "label": "Company offsite" },
+    { "date": "2026-10-14", "label": "Design review" },
+    { "date": "2026-11-27", "label": "Holiday" },
+    { "date": "2026-12-25", "label": "Holiday" }
+  ]
+}
