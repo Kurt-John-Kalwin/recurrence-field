@@ -169,7 +169,16 @@ because a preview that silently disagrees with the saved rule is worse than a re
 npm install
 npm run dev
 npm run verify     # token check, 75 tests, production build
+npm run deploy     # verify, then publish dist to gh-pages
 ```
+
+`verify` is the gate. It runs the token check, the 75 tests including the RFC 5545
+golden set and the contrast suite, and a production build, and `deploy` refuses to
+publish without it. That gate runs on my machine rather than in CI: GitHub Actions
+runners are not available on this account, which I found by pushing a workflow whose
+only step was `echo hello` and watching it fail in five seconds with no logs. Rather
+than leave a permanently red workflow in the repository, the deploy is branch based
+and the gate is a script.
 
 Stack: Vite, React 19, TypeScript, Tailwind v4, `@base-ui/react` 1.8.0. No Next.js:
 the artifact is fully static, I have no production Next.js under my own name, and
