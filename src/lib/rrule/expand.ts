@@ -1,5 +1,5 @@
 import {
-  type ExpandResult, type Occurrence, type RRule, JS_TO_WEEKDAY, WEEKDAY_TO_JS,
+  type ExpandResult, type Occurrence, type RRule, WEEKDAY_TO_JS,
 } from './types';
 import {
   type Wall, daysInMonth, formatOffset, instantToWall, wallExists, wallToInstant,
