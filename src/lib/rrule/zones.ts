@@ -65,25 +65,71 @@ export function getOffsetMs(instant: Date, timeZone: string): number {
  * instant the clock jumps to, matching how calendar software schedules it.
  * DST overlap (a time that happens twice in autumn): returns the first, earlier one.
  */
-export function wallToInstant(wall: Wall, timeZone: string): Date {
+/**
+ * Offsets resolved earlier, keyed by zone and UTC day.
+ *
+ * A zone's offset changes at most a couple of times a year, so the offset that
+ * worked for one instant almost always works for the next. The cached value is
+ * never trusted: it produces a candidate which is then verified by converting
+ * back. A hit costs one Intl call instead of two, a miss costs the full pass,
+ * and a wrong cache entry cannot produce a wrong answer.
+ */
+const dayOffsetCache = new Map<string, number>();
+
+const DAY_MS = 86_400_000;
+
+/**
+ * The instant at which `wall` occurs in `timeZone`, and whether that wall time
+ * exists at all.
+ *
+ * Two passes, because the offset depends on the instant and the instant depends
+ * on the offset. The first guess uses the offset at the naive UTC reading; the
+ * second corrects it.
+ *
+ * `exists` is false inside a spring-forward gap. RFC 5545 section 3.3.10 requires
+ * those instances to be ignored and not counted, so the caller needs to know.
+ * Returning both from one function is what keeps the cost down: computing them
+ * separately meant resolving the same offset twice per occurrence.
+ */
+export function resolveWall(wall: Wall, timeZone: string): { instant: Date; exists: boolean } {
   const naive = wallToUTCMillis(wall);
+  const dayKey = `${timeZone}|${Math.floor(naive / DAY_MS)}`;
+
+  const matches = (ms: number) => {
+    const back = instantToWall(new Date(ms), timeZone);
+    return back.day === wall.day && back.hour === wall.hour && back.minute === wall.minute;
+  };
+
+  const cached = dayOffsetCache.get(dayKey);
+  if (cached !== undefined) {
+    const candidate = naive - cached;
+    if (matches(candidate)) return { instant: new Date(candidate), exists: true };
+  }
+
   const guess1 = naive - getOffsetMs(new Date(naive), timeZone);
-  const guess2 = naive - getOffsetMs(new Date(guess1), timeZone);
+  const offset2 = getOffsetMs(new Date(guess1), timeZone);
+  const guess2 = naive - offset2;
 
-  if (guess1 === guess2) return new Date(guess1);
+  if (guess1 === guess2) {
+    dayOffsetCache.set(dayKey, offset2);
+    return { instant: new Date(guess1), exists: true };
+  }
 
-  // The two guesses disagree, so a transition sits between them. Prefer the
-  // earlier instant that actually round-trips to the requested wall clock.
+  // The guesses disagree, so a transition sits between them. Prefer the earlier
+  // instant that actually round-trips to the requested wall clock; an overlap in
+  // autumn resolves to the first of the two readings.
   const candidates = [guess1, guess2].sort((a, b) => a - b);
   for (const c of candidates) {
-    const back = instantToWall(new Date(c), timeZone);
-    if (back.hour === wall.hour && back.minute === wall.minute && back.day === wall.day) {
-      return new Date(c);
-    }
+    if (matches(c)) return { instant: new Date(c), exists: true };
   }
+
   // Nothing round-trips, so the wall time falls inside a spring-forward gap.
-  // Return the later candidate, which is the instant the clock skips to.
-  return new Date(candidates[1]);
+  return { instant: new Date(candidates[1]), exists: false };
+}
+
+/** The instant at which `wall` occurs in `timeZone`. */
+export function wallToInstant(wall: Wall, timeZone: string): Date {
+  return resolveWall(wall, timeZone).instant;
 }
 
 const offsetCache = new Map<string, Intl.DateTimeFormat>();
@@ -126,9 +172,5 @@ export function daysInMonth(year: number, month: number): number {
  * silently move an appointment and still count it toward COUNT.
  */
 export function wallExists(wall: Wall, timeZone: string): boolean {
-  const back = instantToWall(wallToInstant(wall, timeZone), timeZone);
-  return (
-    back.year === wall.year && back.month === wall.month && back.day === wall.day &&
-    back.hour === wall.hour && back.minute === wall.minute
-  );
+  return resolveWall(wall, timeZone).exists;
 }

@@ -2,7 +2,7 @@ import {
   type ExpandResult, type Occurrence, type RRule, WEEKDAY_TO_JS,
 } from './types';
 import {
-  type Wall, daysInMonth, formatOffset, instantToWall, wallExists, wallToInstant,
+  type Wall, daysInMonth, formatOffset, instantToWall, resolveWall,
 } from './zones';
 
 /** Guard against a rule whose periods never produce a candidate. */
@@ -41,12 +41,19 @@ function resolveMonthDay(year: number, month: number, n: number): number {
   return n > 0 ? n : daysInMonth(year, month) + n + 1;
 }
 
-/** Every date in [year, month] whose weekday matches, in ascending order. */
+/**
+ * Every date in [year, month] whose weekday matches, in ascending order.
+ *
+ * Finds the first match arithmetically and then steps by seven. Scanning the
+ * month day by day meant allocating a Date per day to ask its weekday, which was
+ * the single largest cost in expanding a BYSETPOS rule over many months.
+ */
 function weekdayDatesInMonth(year: number, month: number, jsDay: number): Ymd[] {
-  const out: Ymd[] = [];
+  const firstDayOfWeek = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
   const total = daysInMonth(year, month);
-  for (let day = 1; day <= total; day++) {
-    if (ymdToJsDay({ year, month, day }) === jsDay) out.push({ year, month, day });
+  const out: Ymd[] = [];
+  for (let day = 1 + ((jsDay - firstDayOfWeek + 7) % 7); day <= total; day += 7) {
+    out.push({ year, month, day });
   }
   return out;
 }
@@ -226,15 +233,14 @@ export function expand({ rule, dtstart, timeZone, limit }: ExpandOptions): Expan
       };
       // RFC 5545 section 3.3.10: an instance at a nonexistent local time, such as
       // 02:30 on a spring-forward date, MUST be ignored and MUST NOT be counted.
-      if (!wallExists(wall, timeZone)) {
+      const { instant, exists } = resolveWall(wall, timeZone);
+      if (!exists) {
         skipped.push({
           reason: `${wall.hour.toString().padStart(2, '0')}:${wall.minute.toString().padStart(2, '0')} does not exist in ${timeZone} that day, the clock moves forward`,
           candidate: `${c.year}-${String(c.month).padStart(2, '0')}-${String(c.day).padStart(2, '0')}`,
         });
         continue;
       }
-
-      const instant = wallToInstant(wall, timeZone);
 
       if (instant.getTime() < dtstart.getTime()) continue;
       if (rule.until && instant.getTime() > rule.until.getTime()) {
